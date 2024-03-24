@@ -5,17 +5,22 @@ import PackageDescription
 
 let package = Package(
     name: "WebSocket",
+    platforms: [.macOS(.v12), .iOS(.v16)],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "WebSocket",
             targets: ["WebSocket"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.32.0"),
+    ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "WebSocket"),
+            name: "WebSocket",
+            dependencies: [
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+            ]),
         .testTarget(
             name: "WebSocketTests",
             dependencies: ["WebSocket"]),
