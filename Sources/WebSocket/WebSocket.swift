@@ -54,7 +54,7 @@ public class WebSocket: NSObject {
                     break
                 }
             case .failure(let error):
-                print("🛑", error)
+                print("🔴 error encountered while receiving the message: ", error)
             }
         }
     }
@@ -75,20 +75,27 @@ public class WebSocket: NSObject {
     public func send(_ data: Data) {
         webSocketTask?.send(URLSessionWebSocketTask.Message.data(data)) { error in
             guard let error = error else { return }
-            print("🔴 Failed with Error \(error.localizedDescription)")
+            print("🔴 Failed to send data with Error \(error.localizedDescription)")
         }
     }
     
     public func send(_ text: String) {
         webSocketTask?.send(URLSessionWebSocketTask.Message.string(text)) { error in
             guard let error = error else { return }
-            print("🔴 Failed with Error \(error.localizedDescription)")
+            print("🔴 Failed to send text with Error \(error.localizedDescription)")
         }
     }
     
     public func send<T: Encodable>(_ obj: T) throws {
         let data = try Utils.jsonEncoder.encode(obj)
         send(data)
+    }
+    
+    public func ping() {
+        webSocketTask?.sendPing { error in
+            guard let error = error else { return }
+            print("🔴 Failed to ping with Error \(error.localizedDescription)")
+        }
     }
     
     public func close() {
