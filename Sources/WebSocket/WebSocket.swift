@@ -11,7 +11,7 @@ public class WebSocket: NSObject {
     private let session = URLSession(configuration: .default)
     private var webSocketTask: URLSessionWebSocketTask?
     private var timer: RepeatingTimer?
-    private var pingInterval: Int? = nil
+    private var pingInterval: TimeInterval? = nil
     private var onTextClosure: WebSocketTextClosure?
     private var onDataClosure: WebSocketDataClosure?
     private var onCloseClosure: WebSocketClosure?
@@ -24,7 +24,7 @@ public class WebSocket: NSObject {
         timer = nil
     }
     
-    public func connect(to request: URLRequest, pingInterval: Int? = 30, _ closure: @escaping (WebSocket) -> ()) throws {
+    public func connect(to request: URLRequest, pingInterval: TimeInterval? = 30, _ closure: @escaping (WebSocket) -> ()) throws {
         guard let url = request.url else { throw URLError(.badURL) }
         self.onConnectClosure = closure
         self.pingInterval = pingInterval
@@ -96,10 +96,10 @@ public class WebSocket: NSObject {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
     }
     
-    private func setupPing(pingInterval: Int?) {
+    private func setupPing(pingInterval: TimeInterval?) {
         guard let pingInterval = pingInterval else { return }
         webSocketTask?.sendPing { error in
-            self.timer = RepeatingTimer(timeInterval: TimeInterval(pingInterval)) {
+            self.timer = RepeatingTimer(timeInterval: pingInterval) {
                 self.setupPing(pingInterval: pingInterval)
             }
         }
