@@ -5,21 +5,20 @@ import PackageDescription
 
 let package = Package(
     name: "WebSocket",
-    platforms: [.macOS(.v12), .iOS(.v16)],
+    platforms: [.macOS(.v12), .iOS(.v16), .watchOS(.v6), .tvOS(.v16)],
     products: [
         .library(
             name: "WebSocket",
             targets: ["WebSocket"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.32.0"),
+        .package(url: "https://github.com/vapor/websocket-kit", from: "2.15.0"),
     ],
     targets: [
         .target(
             name: "WebSocket",
             dependencies: [
-                .product(name: "NIO", package: "swift-nio"),
-                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "WebSocketKit", package: "websocket-kit"),
             ]),
         .testTarget(
             name: "WebSocketTests",

@@ -1,15 +1,14 @@
 import Foundation
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
+import WebSocketKit
+import NIO
 
 public typealias WebSocketClosure = (_ ws: WebSocket) -> Void
 public typealias WebSocketTextClosure = (_ ws: WebSocket,  _ text: String) -> Void
 public typealias WebSocketDataClosure = (_ ws: WebSocket,  _ data: Data) -> Void
 
-public class WebSocket: NSObject {
-    private let session = URLSession(configuration: .default)
-    private var webSocketTask: URLSessionWebSocketTask?
+public class WebSocket {
+    private let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+    private var client: EventLoopFuture<Void>?
     private var timer: RepeatingTimer?
     private var pingInterval: TimeInterval? = nil
     private var onTextClosure: WebSocketTextClosure?
@@ -18,47 +17,46 @@ public class WebSocket: NSObject {
     private var onConnectClosure: WebSocketClosure?
     
     public private(set) var isConnected: Bool = false
+    private weak var socket: WebSocketKit.WebSocket?
     
     deinit {
         close()
         timer = nil
+        client = nil
+        try? eventLoopGroup.syncShutdownGracefully()
     }
+    
+    public init() {}
     
     public func connect(to request: URLRequest, pingInterval: TimeInterval? = 30, _ closure: @escaping (WebSocket) -> ()) throws {
-        guard let url = request.url else { throw URLError(.badURL) }
         self.onConnectClosure = closure
         self.pingInterval = pingInterval
-        self.webSocketTask = session.webSocketTask(with: url)
-        self.webSocketTask?.delegate = self
-        self.webSocketTask?.resume()
-        self.listen()
+        try connectWebsocket(request: request)
     }
     
-    private func listen() {
-        webSocketTask?.receive { [weak self] in
-            switch $0 {
-            case .success(let message):
-                defer {
-                    self?.listen()
+    private func connectWebsocket(request: URLRequest) throws {
+        guard let url = request.url else { throw URLError(.badURL) }
+        client = WebSocketKit.WebSocket.connect(
+            to: url,
+            headers: HTTPHeaders(request.allHTTPHeaderFields?.map({($0.key, $0.value)}) ?? []),
+            on: eventLoopGroup) {[weak self] ws in
+                self?.socket = ws
+                self?.runSocketConnectedSequance()
+                ws.onText {[weak self] ws, text in
+                    guard let self = self else { return }
+                    self.onTextClosure?(self, text)
                 }
-                switch message {
-                case .data(let data):
-                    if let self = self {
-                        self.onDataClosure?(self, data)
-                    }
-                case .string(let text):
-                    if let self = self {
-                        self.onTextClosure?(self, text)
-                    }
-                @unknown default:
-                    break
+                ws.onBinary {[weak self] ws, byteBuffer in
+                    guard let self = self else { return }
+                    self.onDataClosure?(self, Data(buffer: byteBuffer, byteTransferStrategy: .automatic))
                 }
-            case .failure(let error):
-                print("🔴 error encountered while receiving the message: ", error)
+                ws.onClose.whenComplete {[weak self] result in
+                    guard let self = self else { return }
+                    self.isConnected = false
+                    self.onCloseClosure?(self)
+                }
             }
-        }
     }
-    
     
     public func onText(_ closure: @escaping WebSocketTextClosure) {
         self.onTextClosure = closure
@@ -73,17 +71,11 @@ public class WebSocket: NSObject {
     }
     
     public func send(_ data: Data) {
-        webSocketTask?.send(URLSessionWebSocketTask.Message.data(data)) { error in
-            guard let error = error else { return }
-            print("🔴 Failed to send data with Error \(error.localizedDescription)")
-        }
+        socket?.send(ByteBuffer(data: data))
     }
     
     public func send(_ text: String) {
-        webSocketTask?.send(URLSessionWebSocketTask.Message.string(text)) { error in
-            guard let error = error else { return }
-            print("🔴 Failed to send text with Error \(error.localizedDescription)")
-        }
+        socket?.send(text)
     }
     
     public func send<T: Encodable>(_ obj: T) throws {
@@ -92,36 +84,27 @@ public class WebSocket: NSObject {
     }
     
     public func ping() {
-        webSocketTask?.sendPing { error in
-            guard let error = error else { return }
-            print("🔴 Failed to ping with Error \(error.localizedDescription)")
-        }
+        socket?.sendPing()
     }
     
     public func close() {
         timer = nil
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        try? socket?.close().wait()
     }
     
     private func setupPing(pingInterval: TimeInterval?) {
         guard let pingInterval = pingInterval else { return }
-        webSocketTask?.sendPing { error in
+        if let socket {
+            socket.sendPing()
             self.timer = RepeatingTimer(timeInterval: pingInterval) {
                 self.setupPing(pingInterval: pingInterval)
             }
         }
     }
-}
-
-extension WebSocket: URLSessionWebSocketDelegate {
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        self.isConnected = true
-        self.onConnectClosure?(self)
-        self.setupPing(pingInterval: pingInterval)
-    }
     
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        self.isConnected = false
-        self.onCloseClosure?(self)
+    private func runSocketConnectedSequance() {
+        isConnected = true
+        onConnectClosure?(self)
+        setupPing(pingInterval: pingInterval)
     }
 }
