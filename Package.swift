@@ -5,7 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "WebSocket",
-    platforms: [.macOS(.v12), .iOS(.v16), .watchOS(.v6), .tvOS(.v16)],
+    platforms: [
+        .macOS(.v10_15),
+        .iOS(.v13),
+        .watchOS(.v6),
+        .tvOS(.v13),
+    ],
     products: [
         .library(
             name: "WebSocket",
