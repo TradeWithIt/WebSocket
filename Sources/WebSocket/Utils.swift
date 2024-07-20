@@ -1,3 +1,4 @@
+#if !os(WASI)
 import Foundation
 
 public extension WebSocket {
@@ -71,3 +72,4 @@ public extension WebSocket {
         }()
     }
 }
+#endif
