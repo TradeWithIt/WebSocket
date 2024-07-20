@@ -28,15 +28,14 @@ public class WebSocket {
     
     public init() {}
     
-    public func connect(to request: URLRequest, pingInterval: TimeInterval? = 30, _ closure: @escaping (WebSocket) -> ()) throws {
+    public func connect(to url: String, pingInterval: TimeInterval? = 30, _ closure: @escaping (WebSocket) -> ()) throws {
         self.onConnectClosure = closure
         self.pingInterval = pingInterval
-        try connectWebsocket(request: request)
+        try connectWebsocket(url: url)
     }
     
-    private func connectWebsocket(request: URLRequest) throws {
-        guard let url = request.url else { throw URLError(.badURL) }
-        guard let webSocket = JSObject.global.WebSocket.function?.new(url.absoluteString) else {
+    private func connectWebsocket(url: String) throws {
+        guard let webSocket = JSObject.global.WebSocket.function?.new(url) else {
             throw URLError(.badURL)
         }
     
