@@ -18,12 +18,22 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/websocket-kit", from: "2.15.0"),
+        .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", from: "0.20.0"),
     ],
     targets: [
         .target(
             name: "WebSocket",
             dependencies: [
-                .product(name: "WebSocketKit", package: "websocket-kit"),
+                .product(
+                    name: "WebSocketKit",
+                    package: "websocket-kit",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .android, .linux, .windows])
+                ),
+                .product(
+                    name: "JavaScriptKit",
+                    package: "JavaScriptKit",
+                    condition: .when(platforms: [.wasi])
+                ),
             ]),
         .testTarget(
             name: "WebSocketTests",
