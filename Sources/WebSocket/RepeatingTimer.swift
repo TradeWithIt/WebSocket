@@ -46,7 +46,7 @@ class RepeatingTimer {
 }
 
 class JSTimer {
-    private var timer: JSObject
+    private var timer: JSObject?
     private var callback: JSClosure?
     
     init(interval: TimeInterval, repeats: Bool, action: @escaping () -> Void) {
@@ -56,9 +56,11 @@ class JSTimer {
         }
         
         if repeats {
-            timer = JSObject.global.setInterval!(callback, interval * 1000).object!
-        } else {
-            timer = JSObject.global.setTimeout!(callback, interval * 1000).object!
+            if let object = JSObject.global.setInterval?(callback, interval * 1000).object {
+                timer = object
+            }
+        } else if let object = JSObject.global.setTimeout?(callback, interval * 1000).object {
+            timer = object
         }
     }
     

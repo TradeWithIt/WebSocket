@@ -20,6 +20,7 @@ public class WebSocket {
     private var onopen: JSClosure?
     private var onmessage: JSClosure?
     private var onclose: JSClosure?
+    private var onerror: JSClosure?
     
     deinit {
         close()
@@ -39,7 +40,7 @@ public class WebSocket {
             throw URLError(.badURL)
         }
     
-        onopen = JSClosure { [weak self] _ -> JSValue in
+        onopen = JSClosure { [weak self] _ in
             guard let self = self else { return .undefined }
             self.runSocketConnectedSequence()
             return .undefined
@@ -49,36 +50,47 @@ public class WebSocket {
             guard let self = self else { return .undefined }
             guard let event = args.first?.object else { return .undefined }
             
-            if let data = event.data.string {
-                self.onTextClosure?(self, data)
+            if let text = event.data.string {
+                print("🔴 onmessage text", text)
+                self.onTextClosure?(self, text)
             } else if let arrayBuffer = event.data.object?.arrayBuffer {
                 let uint8Array = JSObject.global.Uint8Array.function!.new(arrayBuffer)
                 let length = Int(uint8Array.length.number ?? 0)
-                guard length > 0 else { return .undefined }
+                print("🔴 onDataClosure", arrayBuffer, uint8Array, length)
+//                guard length > 0 else { return .undefined }
                 
                 var data = Data(count: length)
                 data.withUnsafeMutableBytes { buffer in
                     guard let ptr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
                     for i in 0..<length {
-                        ptr[i] = UInt8(uint8Array[i].number ?? 0)
+                        ptr[i] = UInt8(arrayBuffer[i].number ?? 0)
                     }
                 }
+                print("🔴 onDataClosure", data)
                 self.onDataClosure?(self, data)
+            } else {
+                print("🔴 HELL NO")
             }
             return .undefined
         }
         
-        onclose = JSClosure { [weak self] _ -> JSValue in
+        onclose = JSClosure { [weak self] value -> JSValue in
             guard let self = self else { return .undefined }
             self.isConnected = false
             self.onCloseClosure?(self)
             return .undefined
         }
         
+        onerror = JSClosure { [weak self] error -> JSValue in
+            print("🔴 onerror", error)
+            return .undefined
+        }
+        
         jsWebSocket = webSocket
-        _ = webSocket.addEventListener?("onopen", onopen)
-        _ = webSocket.addEventListener?("onmessage", onmessage)
-        _ = webSocket.addEventListener?("onclose", onclose)
+        _ = webSocket.addEventListener?("open", onopen)
+        _ = webSocket.addEventListener?("message", onmessage)
+        _ = webSocket.addEventListener?("close", onclose)
+        _ = webSocket.addEventListener?("error", onerror)
     }
     
     public func onText(_ closure: @escaping WebSocketTextClosure) {
@@ -94,6 +106,7 @@ public class WebSocket {
     }
     
     public func send(_ data: Data) {
+        print("🟡 send", data)
         guard let uint8Array = JSObject.global.Uint8Array.function?.new(data.count) else { return }
         _ = data.withUnsafeBytes {
             uint8Array.callAsFunction?("set", Array($0))
@@ -102,6 +115,7 @@ public class WebSocket {
     }
     
     public func send(_ text: String) {
+        print("🟡 send", text, jsWebSocket != nil ? "notNil" : "is nil")
         _ = jsWebSocket?.callAsFunction?("send", text)
     }
     
@@ -111,6 +125,7 @@ public class WebSocket {
     }
     
     public func ping() {
+        
         _ = jsWebSocket?.callAsFunction?("send", JSObject.global.Uint8Array.function!.new(0))
     }
     
