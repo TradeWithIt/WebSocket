@@ -6,6 +6,23 @@ public typealias WebSocketClosure = (_ ws: WebSocket) -> Void
 public typealias WebSocketTextClosure = (_ ws: WebSocket,  _ text: String) -> Void
 public typealias WebSocketDataClosure = (_ ws: WebSocket,  _ data: Data) -> Void
 
+extension Data {
+    func toJSArrayBuffer() -> JSObject? {
+        guard let arrayBuffer = JSObject.global.ArrayBuffer.function?.new(count),
+              let uint8Array = JSObject.global.Uint8Array.function?.new(arrayBuffer) else {
+            return nil
+        }
+
+        self.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            for (index, byte) in bytes.enumerated() {
+                uint8Array[index] = JSValue(integerLiteral: Int32(byte))
+            }
+        }
+
+        return arrayBuffer
+    }
+}
+
 public class WebSocket {
     private var jsWebSocket: JSObject?
     private var pingTimer: JSTimer?
@@ -39,9 +56,12 @@ public class WebSocket {
         guard let webSocket = JSObject.global.WebSocket.function?.new(url) else {
             throw URLError(.badURL)
         }
-    
+        webSocket.binaryType = "arraybuffer".jsValue
+        jsWebSocket = webSocket
+        
         onopen = JSClosure { [weak self] _ in
             guard let self = self else { return .undefined }
+            print("🟢 WebSocket connection opened")
             self.runSocketConnectedSequence()
             return .undefined
         }
@@ -49,44 +69,43 @@ public class WebSocket {
         onmessage = JSClosure { [weak self] args -> JSValue in
             guard let self = self else { return .undefined }
             guard let event = args.first?.object else { return .undefined }
-            
+
             if let text = event.data.string {
                 print("🔴 onmessage text", text)
                 self.onTextClosure?(self, text)
-            } else if let arrayBuffer = event.data.object?.arrayBuffer {
-                let uint8Array = JSObject.global.Uint8Array.function!.new(arrayBuffer)
+            } else if let dataObject = event.data.object,
+                      let uint8Array = JSObject.global.Uint8Array.function?.new(dataObject) {
                 let length = Int(uint8Array.length.number ?? 0)
-                print("🔴 onDataClosure", arrayBuffer, uint8Array, length)
-//                guard length > 0 else { return .undefined }
-                
+                print("🔴 onmessage data", length)
+
                 var data = Data(count: length)
                 data.withUnsafeMutableBytes { buffer in
-                    guard let ptr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                    guard let ptr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        print("🔴 Failed to get pointer to data buffer")
+                        return
+                    }
                     for i in 0..<length {
-                        ptr[i] = UInt8(arrayBuffer[i].number ?? 0)
+                        ptr[i] = UInt8(uint8Array[i].number ?? 0)
                     }
                 }
-                print("🔴 onDataClosure", data)
                 self.onDataClosure?(self, data)
-            } else {
-                print("🔴 HELL NO")
             }
             return .undefined
         }
-        
+
         onclose = JSClosure { [weak self] value -> JSValue in
             guard let self = self else { return .undefined }
+            print("🟢 WebSocket connection closed")
             self.isConnected = false
             self.onCloseClosure?(self)
             return .undefined
         }
         
         onerror = JSClosure { [weak self] error -> JSValue in
-            print("🔴 onerror", error)
+            print("🔴 WebSocket error:", error)
             return .undefined
         }
         
-        jsWebSocket = webSocket
         _ = webSocket.addEventListener?("open", onopen)
         _ = webSocket.addEventListener?("message", onmessage)
         _ = webSocket.addEventListener?("close", onclose)
@@ -106,17 +125,14 @@ public class WebSocket {
     }
     
     public func send(_ data: Data) {
-        print("🟡 send", data)
-        guard let uint8Array = JSObject.global.Uint8Array.function?.new(data.count) else { return }
-        _ = data.withUnsafeBytes {
-            uint8Array.callAsFunction?("set", Array($0))
-        }
-        _ = jsWebSocket?.callAsFunction?("send", uint8Array)
+        guard let webSocket = jsWebSocket,
+        let buffer = data.toJSArrayBuffer() else { return }
+        _ = webSocket.send?(buffer)
     }
-    
+
     public func send(_ text: String) {
-        print("🟡 send", text, jsWebSocket != nil ? "notNil" : "is nil")
-        _ = jsWebSocket?.callAsFunction?("send", text)
+        guard let webSocket = jsWebSocket else { return }
+        _ = webSocket.send?(text.jsValue)
     }
     
     public func send<T: Encodable>(_ obj: T) throws {
@@ -125,12 +141,11 @@ public class WebSocket {
     }
     
     public func ping() {
-        
-        _ = jsWebSocket?.callAsFunction?("send", JSObject.global.Uint8Array.function!.new(0))
+        _ = jsWebSocket?.send?(JSObject.global.Uint8Array.function!.new(0))
     }
     
     public func close() {
-        _ = jsWebSocket?.callAsFunction?("close")
+        _ = jsWebSocket?.close?()
         pingTimer?.invalidate()
     }
     
